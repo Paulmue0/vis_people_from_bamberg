@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>People born in Bamberg</title>
+    <script src="d3.min.js"></script>
+    <style>
+        body {
+            margin: 50px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <p>Paul Müller</p>
+    <h1>Timeline visualization of people born in Bamberg</h1>
+    <p>The used dataset contains every person born in Bamberg that has a wikipedia article.</p>
+
+    <div id="visDiv"></div>
+
+    <h2>Observations:</h2>
+
+    <ul>
+        <li>Some birth-data is misleading. Whenever a person does not have an exact birth date in the wiki
+            <br>entry, he or she appears to be born on January 1.
+        </li><br>
+    </ul>
+
+</body>
+<script>
+    window.onload = function () {
+        d3.json("../people_born_in_bamberg.json")
+            .then(function (jsonData) {
+                /* Prepare Data */
+                var tally = {};
+                var parseDate = d3.timeParse("%Y-%m-%dT00:00:00Z");
+                var formatYear = d3.timeParse("%Y");
+                jsonData.forEach(function (d) {
+                    d.birth = parseDate(d.birth)
+                    year = d.birth.getFullYear()
+                    tally[year] = (tally[year] || 0) + 1;
+                });
+
+                var data = [];
+                const startYear = 1961
+
+                for (var year in tally) {
+                    if (tally.hasOwnProperty(year)) {
+                        if (year >= startYear)
+                            data.push({
+                                year: formatYear(year),
+                                frequency: tally[year]
+                            });
+                    }
+                }
+
+
+                /* Layout constants */
+                var margin = { top: 30, right: 20, bottom: 30, left: 50 },
+                    width = 960 - margin.left - margin.right,
+                    height = 500 - margin.top - margin.bottom;
+
+                /* Initialization of SVG graphics */
+                var svg = d3.select("#visDiv")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.right)
+                    .append("g")
+                    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+                /* Scales */
+                var x = d3.scaleTime()
+                    .range([0, width])
+                    .domain(d3.extent(data, function (d) { return d.year; }));
+                var y = d3.scaleLinear()
+                    .range([height, 0])
+                    .domain([0, d3.max(data, function (d) { return d.frequency; })]);
+
+                var xAxis = d3.axisBottom(x)
+                var yAxis = d3.axisLeft(y)
+
+
+                /* Glyphs */
+                // Add the area
+                svg.append("path")
+                    .datum(data)
+                    .attr("fill", "#92a8d1")
+                    .attr("stroke", "black")
+                    .attr("stroke-width", 1.5)
+                    .attr("d", d3.area()
+                        .x(function (d) { return x(d.year) })
+                        .y0(y(0))
+                        .y1(function (d) { return y(d.frequency) })
+                    )
+
+                // Add the line
+                svg.append("path")
+                    .datum(data)
+                    .attr("fill", "none")
+                    .attr("d", d3.line()
+                        .x(function (d) { return x(d.year) })
+                        .y(function (d) { return y(d.frequency) })
+                    )
+
+                // Add the line
+                svg.selectAll("myCircles")
+                    .data(data)
+                    .enter()
+                    .append("circle")
+                    .attr("fill", "#034f84")
+                    .attr("stroke", "none")
+                    .attr("cx", function (d) { return x(d.year) })
+                    .attr("cy", function (d) { return y(d.frequency) })
+                    .attr("r", 5)
+                    /* Interactivity */
+                    .on("mouseover", mouseover)
+                    .on("mousemove", mousemove)
+                    .on("mouseleave", mouseleave)
+                // create a tooltip
+                var Tooltip = d3.select("#visDiv")
+                    .append("div")
+                    .style("visibility", "hidden")
+                    .attr("class", "tooltip")
+                    .attr("isClicked", "false")
+                    .style("background-color", "white")
+                    .style("border", "solid")
+                    .style("position", "absolute")
+                    .style("border-width", "2px")
+                    .style("border-radius", "5px")
+                    .style("padding", "5px")
+
+                // Three function that change the tooltip when user hover / move / leave a cell
+                function mouseover(d, i) {
+                    if (d3.select(this).attr("isClicked") == null) {
+                        d3.select(this)
+                            .attr("isClicked", false)
+                    }
+                    Tooltip
+                        .style("visibility", "visible")
+                    d3.select(this)
+                        .style("stroke", "black")
+                        .attr("r", 12)
+                }
+                function mousemove(d, i) {
+                    Tooltip
+                        .html(create_string_for_tooltip(get_all_people_in_year_sorted_asc(i.year.getFullYear())))
+                        .style("left", (d3.pointer(event)[0] + 107) + "px")
+                        .style("top", (d3.pointer(event)[1] + 100) + "px")
+                }
+                function mouseleave(d, i) {
+                    svg
+                        .append("circle")
+                        .attr("id", "helperCircle")
+                        .attr("opacity", 0)
+                        .attr("stroke", "none")
+                        .attr("cx", function (d) { return x(i.year) })
+                        .attr("cy", function (d) { return y(i.frequency) })
+                        .attr("r", 1000)
+                        .on("mousemove", (event, d) => {
+                            var circle_tresh = {
+                                x_right: (d3.pointer(event)[0] >= (parseInt(d3.select(this).attr("cx")) + 200)),
+                                x_left: (d3.pointer(event)[0] <= (parseInt(d3.select(this).attr("cx")) - 10)),
+                                y_right: (d3.pointer(event)[1] >= (parseInt(d3.select(this).attr("cy")) + 30)),
+                                y_left: (d3.pointer(event)[1] <= (parseInt(d3.select(this).attr("cy")) - 30))
+                            }
+
+
+                            if (circle_tresh.x_right || circle_tresh.x_left ||
+                                circle_tresh.y_left || circle_tresh.y_right) {
+                                Tooltip
+                                    .style("visibility", "hidden")
+                                d3.select(this)
+                                    .style("stroke", "none")
+                                    .attr("r", 5)
+                                d3.select("#helperCircle").remove()
+                            }
+                        })
+
+                }
+
+                /* Add the Axes*/
+                svg.append("g")
+                    .attr("class", "x axis")
+                    .attr("transform", "translate(0," + height + ")")
+                    .call(xAxis);
+                svg.append("g")
+                    .attr("class", "y axis")
+                    .call(yAxis);
+
+                /* helper functions */
+                function get_all_people_in_year_sorted_asc(year) {
+                    var people = []
+                    jsonData.forEach(function (d) {
+                        if (d.birth.getFullYear() == year)
+                            people.push(d)
+                    })
+                    return people.sort(function (a, b) { return d3.ascending(a.birth, b.birth) })
+                }
+
+                function create_string_for_tooltip(dataset) {
+                    var tooltip_string = "<h3 style=\"margin: 0\">" + dataset[0].birth.getFullYear() + "</h3><br>"
+                    dataset.forEach(function (d) {
+                        tooltip_string += "<p style=\"line-height: 75%\">"
+                            + d.birth.toDateString().split(" ")[1] + " " + d.birth.toDateString().split(" ")[2] + " "
+                            + "<a href=" + d.item + "><b>" + d.itemLabel + "</b></a>"
+                        if (d.itemDescription != null)
+                            tooltip_string += ": " + d.itemDescription
+                                + "</p>"
+                    })
+                    return tooltip_string
+                }
+            })
+    };
+</script>
+
+</html>
